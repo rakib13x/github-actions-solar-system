@@ -52,6 +52,33 @@ app.post('/planet', async (req, res) => {
 });
 
 
+app.post('/planet',   function(req, res) {
+   // console.log("Received Planet ID " + req.body.id)
+    planetModel.findOne({
+        id: req.body.id
+    }, function(err, planetData) {
+        if (err) {
+    res.status(500).send("Error in Planet Data");
+} else if (!planetData) {
+    res.status(404).send({error: "Planet not found"});
+} else {
+    res.send(planetData);
+}
+    })
+})
+app.post('/planet', async (req, res) => {
+  try {
+    const planetData = await planetModel.findOne({ id: req.body.id });
+    if (!planetData) {
+      return res.status(404).send({ error: "Ooops, We only have 9 planets and a sun. Select a number from 0 - 9" });
+    }
+    res.send(planetData);
+  } catch (err) {
+    res.status(500).send({ error: "Error in Planet Data" });
+  }
+});
+
+
 
 app.get('/',   async (req, res) => {
     res.sendFile(path.join(__dirname, '/', 'index.html'));
