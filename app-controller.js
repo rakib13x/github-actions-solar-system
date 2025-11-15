@@ -12,7 +12,7 @@ window.onload = function() {
             if (res.ok) {
                 return res.json();
             }
-            thrownewError('Request failed');
+            throw new Error('Request failed');
         }).catch(function(error) {
             console.log(error);
         })
@@ -46,7 +46,7 @@ function func() {
             if (res2.ok) {
                 return res2.json();
             }
-            thrownewError('Request failed.');
+            throw new Error('Request failed.');
         }).catch(function(error) {
             alert("Ooops, We have 8 planets.\nSelect a number from 0 - 8")
             console.log(error);
