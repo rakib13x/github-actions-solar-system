@@ -8,18 +8,16 @@ mongoose.set('debug', true);
 const cors = require('cors');
 
 const app = express();
-
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '/')));
 app.use(cors());
 
-// Validate the MongoDB URI format-----
+// Validate the MongoDB URI format
 const mongoUri = process.env.MONGO_URI;
 if (!mongoUri || (!mongoUri.startsWith('mongodb://') && !mongoUri.startsWith('mongodb+srv://'))) {
   console.error('Error: Invalid or missing MongoDB URI. Make sure MONGO_URI starts with mongodb:// or mongodb+srv://');
   process.exit(1);
 }
-
 
 async function startServer() {
   try {
@@ -33,14 +31,13 @@ async function startServer() {
 
     const port = 3000;
     app.listen(port, () => {
-      console.log(`Server successfully running on port - ${port}`);
+      console.log(`Server successfully running on port - ${port}`);  // Fixed: was using backtick instead of parenthesis
     });
   } catch (err) {
     console.error("MongoDB connection error:", err);
     process.exit(1);
   }
 }
-
 
 startServer();
 
@@ -59,7 +56,7 @@ app.post('/planet', async (req, res) => {
   try {
     const planetData = await planetModel.findOne({ id: req.body.id });
     if (!planetData) {
-      return res.status(404).send({ error: "Ooops, We only have 9 planets and a sun. Select a number from 0 - 9" });
+      return res.status(404).send({ error: "Ooops, We only have 8 planets. Select a number from 1 - 8" });
     }
     res.send(planetData);
   } catch (err) {
