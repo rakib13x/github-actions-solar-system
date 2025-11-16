@@ -13,20 +13,28 @@ app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '/')));
 app.use(cors());
 
-mongoose.connect(process.env.MONGO_URI, {
-  auth: {
-    user: process.env.MONGO_USERNAME,
-    password: process.env.MONGO_PASSWORD,
-  },
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-}, function(err) {
-  if (err) {
-    console.log("MongoDB connection error: " + err);
-  } else {
+async function startServer() {
+  try {
+    await mongoose.connect(process.env.MONGO_URI, {
+      auth: {
+        user: process.env.MONGO_USERNAME,
+        password: process.env.MONGO_PASSWORD,
+      },
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
     console.log("MongoDB connection successful");
+
+    const port = 3000;
+    app.listen(port, () => {
+      console.log(`Server successfully running on port - ${port}`);
+    });
+  } catch (err) {
+    console.error("MongoDB connection error:", err);
   }
-});
+}
+
+startServer();
 
 const dataSchema = new mongoose.Schema({
   name: String,
