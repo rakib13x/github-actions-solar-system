@@ -4,7 +4,7 @@ const express = require('express');
 const OS = require('os');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
-mongoose.set('debug', true); // Enable mongoose query debug logging
+mongoose.set('debug', true);
 const cors = require('cors');
 
 const app = express();
@@ -13,9 +13,16 @@ app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '/')));
 app.use(cors());
 
+// Validate the MongoDB URI format
+const mongoUri = process.env.MONGO_URI;
+if (!mongoUri || (!mongoUri.startsWith('mongodb://') && !mongoUri.startsWith('mongodb+srv://'))) {
+  console.error('Error: Invalid or missing MongoDB URI. Make sure MONGO_URI starts with mongodb:// or mongodb+srv://');
+  process.exit(1);
+}
+
 async function startServer() {
   try {
-    await mongoose.connect(process.env.MONGO_URI, {
+    await mongoose.connect(mongoUri, {
       auth: {
         user: process.env.MONGO_USERNAME,
         password: process.env.MONGO_PASSWORD,
@@ -31,6 +38,7 @@ async function startServer() {
     });
   } catch (err) {
     console.error("MongoDB connection error:", err);
+    process.exit(1);
   }
 }
 
@@ -47,7 +55,6 @@ const dataSchema = new mongoose.Schema({
 
 const planetModel = mongoose.model('planets', dataSchema);
 
-// Use async/await style only
 app.post('/planet', async (req, res) => {
   try {
     const planetData = await planetModel.findOne({ id: req.body.id });
@@ -78,11 +85,6 @@ app.get('/live', (req, res) => {
 
 app.get('/ready', (req, res) => {
   res.json({ status: 'ready' });
-});
-
-const port = 3000;
-app.listen(port, () => {
-  console.log(`Server successfully running on port - ${port}`);
 });
 
 module.exports = app;

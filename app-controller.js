@@ -27,10 +27,8 @@ if (btn) {
     .then(data => {
       if (data) {
         document.getElementById('planetName').innerHTML = `${data.name}`;
-
         const element = document.getElementById("planetImage");
         element.style.backgroundImage = `url(${data.image})`;
-
         document.getElementById('planetDescription').innerHTML = data.description.replace(/(.{80})/g, "$1<br>");
       }
     })
