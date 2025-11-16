@@ -4,6 +4,7 @@ const express = require('express');
 const OS = require('os');
 const bodyParser = require('body-parser');
 const mongoose = require("mongoose");
+mongoose.set('debug', true);
 const app = express();
 const cors = require('cors')
 
