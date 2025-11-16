@@ -6,20 +6,22 @@ window.onload = function() {
     console.log("onLoad - Request Planet ID - " + planet_id)
 
     fetch("/os", {
-            method: "GET"
-        })
-        .then(function(res) {
-            if (res.ok) {
-                return res.json();
-            }
-            throw new Error('Request failed');
-        }).catch(function(error) {
-            console.log(error);
-        })
-        .then(function(data) {
-            document.getElementById('hostname').innerHTML = `Pod - ${data.os} `
-          //  document.getElementById('environment').innerHTML = ` Env - ${data.env}  `
-        });
+        method: "GET"
+    })
+    .then(function(res) {
+        if (res.ok) {
+            return res.json();
+        }
+        throw new Error('Request failed');
+    })
+    .catch(function(error) {
+        console.log(error);
+    })
+    .then(function(data) {
+        if (data) {
+            document.getElementById('hostname').innerHTML = `Pod - ${data.os} `;
+        }
+    });
 };
 
 
