@@ -13,7 +13,7 @@ app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '/')));
 app.use(cors());
 
-// Validate the MongoDB URI format
+// Validate the MongoDB URI format-----
 const mongoUri = process.env.MONGO_URI;
 if (!mongoUri || (!mongoUri.startsWith('mongodb://') && !mongoUri.startsWith('mongodb+srv://'))) {
   console.error('Error: Invalid or missing MongoDB URI. Make sure MONGO_URI starts with mongodb:// or mongodb+srv://');
