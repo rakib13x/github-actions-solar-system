@@ -20,13 +20,12 @@ if (!mongoUri || (!mongoUri.startsWith('mongodb://') && !mongoUri.startsWith('mo
   process.exit(1);
 }
 
+
 async function startServer() {
   try {
     await mongoose.connect(mongoUri, {
-      auth: {
-        user: process.env.MONGO_USERNAME,
-        password: process.env.MONGO_PASSWORD,
-      },
+      user: process.env.MONGO_USERNAME,
+      pass: process.env.MONGO_PASSWORD,
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
@@ -41,6 +40,7 @@ async function startServer() {
     process.exit(1);
   }
 }
+
 
 startServer();
 
