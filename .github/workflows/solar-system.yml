@@ -5,7 +5,7 @@ on:
   push:
     branches:
       - main
-      - 'feature/*'
+      - 'feature'
 
 env:
   MONGO_URI: ${{ secrets.MONGO_URI }}
