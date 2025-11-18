@@ -40,7 +40,7 @@ jobs:
           run: npm test
           
         - name: Archive Test Result
-          if: failure() && (steps.node-js-unit-testing.outcome == 'failure' || steps.node-js-unit-testing.outcome == 'success')
+          if: always()
           uses: actions/upload-artifact@v4
           with:
             name: test-result-${{ matrix.operating_system }}-node${{ matrix.nodejs_version }}
