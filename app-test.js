@@ -43,7 +43,7 @@ describe('Testing Other Endpoints', () => {
         .get('/live')
         .end((err, res) => {
           res.should.have.status(200);
-          res.body.should.have.property('status').eql('liveeeeeee');
+          res.body.should.have.property('status').eql('live');
           done();
         });
     });
