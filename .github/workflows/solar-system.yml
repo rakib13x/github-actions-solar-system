@@ -131,7 +131,7 @@ jobs:
     - name: Docker Push
       run: |
         docker images
-        docker run --name solar-system-app -d \
+        docker run --name solar-system-app-push -d \
           -p 3000:3000 \
           -e MONGO_URI=${{ env.MONGO_URI }} \
           -e MONGO_USERNAME=${{ env.MONGO_USERNAME }} \
