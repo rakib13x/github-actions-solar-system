@@ -113,6 +113,7 @@ jobs:
 
     - name: Docker Image Testing
       run: |
+        docker rm -f solar-system-app || true
         docker images
         docker run --name solar-system-app -d \
           -p 3000:3000 \
