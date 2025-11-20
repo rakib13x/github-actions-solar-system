@@ -128,6 +128,10 @@ jobs:
         echo Testing the Image URL using wget
         wget -q -O - 127.0.0.1:3000/live | grep live
 
+        # Clean up the test container
+        docker stop solar-system-app
+        docker rm solar-system-app
+
       
     - name: Container Registry Push
       uses: docker/build-push-action@v6.18.0
@@ -140,6 +144,7 @@ jobs:
 
     - name: Docker Push
       run: |
+        docker rm -f solar-system-app-push || true
         docker images
         docker run --name solar-system-app-push -d \
           -p 3000:3000 \
@@ -148,8 +153,8 @@ jobs:
           -e MONGO_PASSWORD=${{ env.MONGO_PASSWORD }} \
           ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
 
-        export IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' solar-system-app)
+        export IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' solar-system-app-push)
         echo $IP
 
         echo Testing the Image URL using wget
-        wget -q -O - 127.0.0.1:3000/live | grep live  
+        wget -q -O - 127.0.0.1:3000/live | grep live
