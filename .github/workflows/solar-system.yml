@@ -16,16 +16,18 @@ jobs:
   unit-testing:
         name: Unit Testing
         services: 
-          mongo-db: 
-            image: siddharth67/mongo-db:non-prod
-            ports:
-              - 27017:27017
+            mongo-db: 
+              image: mongo:6.0
+              env:
+                MONGO_INITDB_ROOT_USERNAME: testuser
+                MONGO_INITDB_ROOT_PASSWORD: testpass
+                MONGO_INITDB_DATABASE: testdb
+              ports:
+                - 27017:27017
         env:
-          # URL-encoded password: C:FFkycc,V7wcvE becomes C%3AFFkycc%2CV7wcvE
-          # : = %3A and , = %2C
-          MONGO_URI: 'mongodb://Rakibbb:RbbD5BIZib5VbwZL@localhost:27017/solar-system-test-db'
-          MONGO_USERNAME: 'Rakibbb'
-          MONGO_PASSWORD: 'RbbD5BIZib5VbwZL'      
+          MONGO_URI: 'mongodb://testuser:testpass@localhost:27017/testdb?authSource=admin'
+          MONGO_USERNAME: 'testuser'
+          MONGO_PASSWORD: 'testpass'      
         strategy:
           matrix:
             nodejs_version: [18, 19, 20]
