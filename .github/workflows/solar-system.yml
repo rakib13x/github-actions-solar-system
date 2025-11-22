@@ -67,15 +67,12 @@ jobs:
   
   code-coverage:
     name: Code Coverage
+    container: node:18
     services: 
       mongo-db: 
         image: mongo:6.0
-        env:
-          MONGO_INITDB_ROOT_USERNAME: testuser
-          MONGO_INITDB_ROOT_PASSWORD: testpass
-          MONGO_INITDB_DATABASE: testdb
-        ports:
-          - 27017:27017
+        options: 
+          --name mongo-db
     env:
       MONGO_URI: 'mongodb://testuser:testpass@localhost:27017/testdb?authSource=admin'
       MONGO_USERNAME: 'testuser'
@@ -84,11 +81,12 @@ jobs:
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
-
-    - name: Setup Nodejs Version - 18
-      uses: actions/setup-node@v4
-      with:
-        node-version: 18
+      
+    # --as i am running code coverage in node 18 docker container, so no need to setup node again
+    # - name: Setup Nodejs Version - 18
+    #   uses: actions/setup-node@v4
+    #   with:
+    #     node-version: 18
 
     - name: Cache NPM dependencies
       uses: actions/cache@v4
