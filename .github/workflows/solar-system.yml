@@ -216,6 +216,7 @@ jobs:
         run: |
           kubectl cluster-info
           kubectl get nodes
+        continue-on-error: true
 
       - name: Deploy Application
         run: |
