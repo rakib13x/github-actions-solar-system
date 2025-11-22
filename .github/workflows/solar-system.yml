@@ -23,9 +23,9 @@ jobs:
         env:
           # URL-encoded password: C:FFkycc,V7wcvE becomes C%3AFFkycc%2CV7wcvE
           # : = %3A and , = %2C
-          MONGO_URI: 'mongodb://Rakibbb:C%3AFFkycc%2CV7wcvE@localhost:27017/solar-system-test-db'
+          MONGO_URI: 'mongodb://Rakibbb:RbbD5BIZib5VbwZL@localhost:27017/solar-system-test-db'
           MONGO_USERNAME: 'Rakibbb'
-          MONGO_PASSWORD: 'C:FFkycc,V7wcvE'      
+          MONGO_PASSWORD: 'RbbD5BIZib5VbwZL'      
         strategy:
           matrix:
             nodejs_version: [18, 19, 20]
