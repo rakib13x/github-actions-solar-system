@@ -97,7 +97,8 @@ async function seedDatabase() {
     await planetModel.insertMany(planets);
     console.log("Successfully seeded database with 8 planets");
 
-    mongoose.connection.close();
+    await mongoose.connection.close();
+    console.log("Database connection closed");
   } catch (err) {
     console.error("Error seeding database:", err);
     process.exit(1);
