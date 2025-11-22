@@ -219,6 +219,4 @@ jobs:
         continue-on-error: true
 
       - name: Deploy Application
-        run: |
-          kubectl apply -f your-deployment.yaml
-          kubectl get pods
+        run:  echo "Deploying to Kubernetes Cluster"
