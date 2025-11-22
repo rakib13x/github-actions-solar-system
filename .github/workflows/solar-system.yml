@@ -74,7 +74,7 @@ jobs:
         options: 
           --name mongo-db
     env:
-      MONGO_URI: 'mongodb://testuser:testpass@localhost:27017/testdb?authSource=admin'
+      MONGO_URI: 'mongodb://testuser:testpass@mongo-db:27017/testdb?authSource=admin'
       MONGO_USERNAME: 'testuser'
       MONGO_PASSWORD: 'testpass'
     runs-on: ubuntu-latest
