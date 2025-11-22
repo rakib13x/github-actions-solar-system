@@ -71,6 +71,10 @@ jobs:
     services: 
       mongo-db: 
         image: mongo:6.0
+        env:
+          MONGO_INITDB_ROOT_USERNAME: testuser
+          MONGO_INITDB_ROOT_PASSWORD: testpass
+          MONGO_INITDB_DATABASE: testdb
         options: 
           --name mongo-db
     env:
