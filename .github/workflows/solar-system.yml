@@ -194,19 +194,30 @@ jobs:
         wget -q -O - 127.0.0.1:3000/live | grep live
 
   dev-deploy:
-    needs: docker
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repo
+      name: Deploy to Kubernetes
+      needs: docker
+      runs-on: ubuntu-latest
+      steps:
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install Kubectl cli
+      - name: Install kubectl
         uses: azure/setup-kubectl@v3
         with:
-          version: 'latest'
+          version: 'v1.28.0' # Specify version if needed
 
-      - name: Fetch Kubernetes Cluster Details
+      - name: Set up Kubeconfig
         run: |
-          kubectl version --client --output=yaml
-          echo --------------------------------------
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBECONFIG }}" > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Verify Kubernetes Connection
+        run: |
+          kubectl cluster-info
           kubectl get nodes
+
+      - name: Deploy Application
+        run: |
+          kubectl apply -f your-deployment.yaml
+          kubectl get pods
