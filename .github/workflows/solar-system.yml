@@ -194,50 +194,92 @@ jobs:
         wget -q -O - 127.0.0.1:3000/live | grep live
 
   dev-deploy:
-      name: Deploy to Kubernetes
-      needs: docker
-      runs-on: ubuntu-latest
-      steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Install kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: 'v1.28.0' # Specify version if needed
-
-      - name: Set up Kubeconfig
-        run: |
-          mkdir -p $HOME/.kube
-          echo "${{ secrets.KUBECONFIG }}" > $HOME/.kube/config
-          chmod 600 $HOME/.kube/config
-
-      - name: Verify Kubernetes Connection
-        run: |
-          kubectl cluster-info
-          kubectl get nodes
-        continue-on-error: true
-
-      - name: Deploy Application
-        run:  echo "Deploying to Kubernetes Cluster"
-
-      - name: Save nginx Controller Ip as a Variable
-        id: save-nginx-ip
-        run: |
+    name: Deploy to Kubernetes
+    needs: docker
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+        
+    # OPTION 1: Using kubeconfig from secrets (fixed version)
+    - name: Set up Kubeconfig
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.KUBECONFIG }}" | base64 -d > $HOME/.kube/config
+        chmod 600 $HOME/.kube/config
+        # Verify the config was created
+        ls -la $HOME/.kube/config
+        # Show the server address (without credentials)
+        kubectl config view --minify | grep server
+        
+    # OPTION 2: Alternative - Configure kubectl directly with cluster details
+    # - name: Configure kubectl
+    #   run: |
+    #     kubectl config set-cluster my-cluster \
+    #       --server=${{ secrets.K8S_SERVER }} \
+    #       --certificate-authority=$HOME/.kube/ca.crt \
+    #       --embed-certs=true
+    #     
+    #     echo "${{ secrets.K8S_CA_CERT }}" | base64 -d > $HOME/.kube/ca.crt
+    #     
+    #     kubectl config set-credentials github-actions \
+    #       --token=${{ secrets.K8S_TOKEN }}
+    #     
+    #     kubectl config set-context my-context \
+    #       --cluster=my-cluster \
+    #       --user=github-actions \
+    #       --namespace=default
+    #     
+    #     kubectl config use-context my-context
+        
+    - name: Verify Kubernetes Connection
+      run: |
+        echo "Testing connection to cluster..."
+        kubectl cluster-info
+        kubectl get nodes
+        echo "Connection successful!"
+        
+    - name: Deploy Application
+      run: echo "Deploying to Kubernetes Cluster"
+      
+    - name: Save nginx Controller IP as a Variable
+      id: save-nginx-ip
+      run: |
+        # Check if the service exists first
+        if kubectl get svc nginx-ingress-controller -n ingress-nginx 2>/dev/null; then
           NGINX_IP=$(kubectl get svc nginx-ingress-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          
+          # Fallback to hostname if IP is not available
+          if [ -z "$NGINX_IP" ]; then
+            NGINX_IP=$(kubectl get svc nginx-ingress-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          fi
+          
           echo "NGINX_IP=$NGINX_IP" >> $GITHUB_ENV
-
-      - name: Replace Token in Manifest files
-        uses: cschleiden/replace-tokens@v1
-        with:
-          tokenPrefix: '_{_'
-          tokenSuffix: '_}_'
-          files: '["kubernetes/development/deployment.yaml"]'
-        env:
-          NAMESPACE: ${{ vars.NAMESPACE }}
-          REPLICAS: ${{ vars.REPLICAS }}
-          IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
-          INGRESS_IP: ${{ env.NGINX_IP }}
-      - name: Check files
-        run: |
-          cat kubernetes/development/deployment.yaml
+          echo "Found Nginx Ingress IP/Hostname: $NGINX_IP"
+        else
+          echo "Warning: nginx-ingress-controller service not found in ingress-nginx namespace"
+          echo "NGINX_IP=placeholder.example.com" >> $GITHUB_ENV
+        fi
+      continue-on-error: true
+      
+    - name: Replace Tokens in Manifest files
+      run: |
+        sed -i "s|_{_NAMESPACE_}_|${{ vars.NAMESPACE }}|g" kubernetes/development/deployment.yaml
+        sed -i "s|_{_REPLICAS_}_|${{ vars.REPLICAS }}|g" kubernetes/development/deployment.yaml
+        sed -i "s|_{_IMAGE_}_|${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}|g" kubernetes/development/deployment.yaml
+        sed -i "s|_{_INGRESS_IP_}_|${{ env.NGINX_IP }}|g" kubernetes/development/deployment.yaml
+        
+    - name: Check files
+      run: |
+        echo "=== Deployment manifest after token replacement ==="
+        cat kubernetes/development/deployment.yaml
+        
+    - name: Apply Kubernetes Manifests
+      run: |
+        kubectl apply -f kubernetes/development/deployment.yaml
+        kubectl rollout status deployment/solar-system -n ${{ vars.NAMESPACE }} --timeout=5m
