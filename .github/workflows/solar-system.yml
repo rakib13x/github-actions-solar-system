@@ -206,36 +206,43 @@ jobs:
       with:
         version: 'v1.28.0'
         
-    # OPTION 1: Using kubeconfig from secrets (fixed version)
+    # OPTION 1: Using kubeconfig from secrets
     - name: Set up Kubeconfig
       run: |
         mkdir -p $HOME/.kube
-        echo "${{ secrets.KUBECONFIG }}" | base64 -d > $HOME/.kube/config
+        # Write the secret directly (assuming it's plain text YAML)
+        echo "${{ secrets.KUBECONFIG }}" > $HOME/.kube/config
         chmod 600 $HOME/.kube/config
         # Verify the config was created
         ls -la $HOME/.kube/config
-        # Show the server address (without credentials)
-        kubectl config view --minify | grep server
+        # Show the server address (without credentials) for debugging
+        kubectl config view --minify | grep server || echo "Could not parse kubeconfig"
         
-    # OPTION 2: Alternative - Configure kubectl directly with cluster details
-    # - name: Configure kubectl
+    # OPTION 2: Using Service Account Token (More Secure for CI/CD)
+    # Create these secrets in GitHub:
+    # - K8S_SERVER: https://your-cluster-ip:6443
+    # - K8S_CA_CERT: Base64 encoded CA certificate
+    # - K8S_TOKEN: Service account token
+    # 
+    # - name: Configure kubectl with Service Account
     #   run: |
+    #     mkdir -p $HOME/.kube
+    #     echo "${{ secrets.K8S_CA_CERT }}" | base64 -d > $HOME/.kube/ca.crt
+    #     
     #     kubectl config set-cluster my-cluster \
     #       --server=${{ secrets.K8S_SERVER }} \
     #       --certificate-authority=$HOME/.kube/ca.crt \
     #       --embed-certs=true
     #     
-    #     echo "${{ secrets.K8S_CA_CERT }}" | base64 -d > $HOME/.kube/ca.crt
-    #     
     #     kubectl config set-credentials github-actions \
     #       --token=${{ secrets.K8S_TOKEN }}
     #     
-    #     kubectl config set-context my-context \
+    #     kubectl config set-context deploy-context \
     #       --cluster=my-cluster \
     #       --user=github-actions \
-    #       --namespace=default
+    #       --namespace=${{ vars.NAMESPACE }}
     #     
-    #     kubectl config use-context my-context
+    #     kubectl config use-context deploy-context
         
     - name: Verify Kubernetes Connection
       run: |
