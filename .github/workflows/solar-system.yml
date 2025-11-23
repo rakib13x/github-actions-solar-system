@@ -220,3 +220,24 @@ jobs:
 
       - name: Deploy Application
         run:  echo "Deploying to Kubernetes Cluster"
+
+      - name: Save nginx Controller Ip as a Variable
+        id: save-nginx-ip
+        run: |
+          NGINX_IP=$(kubectl get svc nginx-ingress-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          echo "NGINX_IP=$NGINX_IP" >> $GITHUB_ENV
+
+      - name: Replace Token in Manifest files
+        uses: cschleiden/replace-token@v1.3.0
+        with:
+          tokenprefix: '_{_'
+          tokensuffix: '_}_'
+          files: '["kubernetes/development/deployment.yaml"]'
+        env:
+          NAMESPACE: ${{ vars.NAMESPACE }}
+          REPLICAS: ${{ vars.REPLICAS }}
+          IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+          INGRESS_IP: ${{ env.NGINX_IP }}
+      - name: Check files
+        run: |
+          cat kubernetes/development/deployment.yaml
