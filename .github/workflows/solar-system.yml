@@ -257,19 +257,63 @@ jobs:
     - name: Save nginx Controller IP as a Variable
       id: save-nginx-ip
       run: |
-        # Check if the service exists first
-        if kubectl get svc nginx-ingress-controller -n ingress-nginx 2>/dev/null; then
-          NGINX_IP=$(kubectl get svc nginx-ingress-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+        echo "Checking for ingress-nginx controller..."
+        
+        # First check which ingress service exists
+        if kubectl get svc ingress-nginx-controller -n ingress-nginx 2>/dev/null; then
+          SERVICE_NAME="ingress-nginx-controller"
+          echo "Found service: ingress-nginx-controller"
+        elif kubectl get svc nginx-ingress-controller -n ingress-nginx 2>/dev/null; then
+          SERVICE_NAME="nginx-ingress-controller"
+          echo "Found service: nginx-ingress-controller"
+        else
+          echo "Warning: No ingress controller service found in ingress-nginx namespace"
+          echo "Available services in ingress-nginx:"
+          kubectl get svc -n ingress-nginx || true
+          SERVICE_NAME=""
+        fi
+        
+        if [ -n "$SERVICE_NAME" ]; then
+          # Check service type
+          SERVICE_TYPE=$(kubectl get svc $SERVICE_NAME -n ingress-nginx -o jsonpath='{.spec.type}')
+          echo "Service type: $SERVICE_TYPE"
           
-          # Fallback to hostname if IP is not available
-          if [ -z "$NGINX_IP" ]; then
-            NGINX_IP=$(kubectl get svc nginx-ingress-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          if [ "$SERVICE_TYPE" = "LoadBalancer" ]; then
+            # Try to get LoadBalancer IP
+            NGINX_IP=$(kubectl get svc $SERVICE_NAME -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            
+            # Fallback to hostname if IP is not available
+            if [ -z "$NGINX_IP" ]; then
+              NGINX_IP=$(kubectl get svc $SERVICE_NAME -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+            fi
+            
+            # If still empty, LoadBalancer might be pending
+            if [ -z "$NGINX_IP" ]; then
+              echo "LoadBalancer IP/Hostname not yet assigned, checking status..."
+              kubectl get svc $SERVICE_NAME -n ingress-nginx
+              NGINX_IP="pending"
+            fi
+          elif [ "$SERVICE_TYPE" = "NodePort" ]; then
+            # For minikube/NodePort setup, get the node IP
+            # First try to get minikube IP (if running in minikube environment)
+            NGINX_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+            
+            # Get the NodePort
+            NODE_PORT=$(kubectl get svc $SERVICE_NAME -n ingress-nginx -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}')
+            
+            if [ -n "$NODE_PORT" ]; then
+              echo "NodePort detected: $NODE_PORT"
+              echo "NODE_PORT=$NODE_PORT" >> $GITHUB_ENV
+              # For NodePort, you might want to use IP:PORT format
+              NGINX_ENDPOINT="${NGINX_IP}:${NODE_PORT}"
+              echo "NGINX_ENDPOINT=$NGINX_ENDPOINT" >> $GITHUB_ENV
+            fi
           fi
           
           echo "NGINX_IP=$NGINX_IP" >> $GITHUB_ENV
           echo "Found Nginx Ingress IP/Hostname: $NGINX_IP"
         else
-          echo "Warning: nginx-ingress-controller service not found in ingress-nginx namespace"
+          echo "Setting placeholder for NGINX_IP"
           echo "NGINX_IP=placeholder.example.com" >> $GITHUB_ENV
         fi
       continue-on-error: true
