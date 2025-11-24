@@ -200,55 +200,41 @@ jobs:
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
-      
-    - name: Install kubectl
-      uses: azure/setup-kubectl@v3
-      with:
-        version: 'v1.28.0'
-        
-    # OPTION 1: Using kubeconfig from secrets
-    - name: Set up Kubeconfig
+    
+    - name: Ensure Minikube is Running
       run: |
-        mkdir -p $HOME/.kube
-        # Write the secret directly (assuming it's plain text YAML)
-        echo "${{ secrets.KUBECONFIG }}" > $HOME/.kube/config
-        chmod 600 $HOME/.kube/config
-        # Verify the config was created
-        ls -la $HOME/.kube/config
-        # Show the server address (without credentials) for debugging
-        kubectl config view --minify | grep server || echo "Could not parse kubeconfig"
-        
-    # OPTION 2: Using Service Account Token (More Secure for CI/CD)
-    # Create these secrets in GitHub:
-    # - K8S_SERVER: https://your-cluster-ip:6443
-    # - K8S_CA_CERT: Base64 encoded CA certificate
-    # - K8S_TOKEN: Service account token
-    # 
-    # - name: Configure kubectl with Service Account
-    #   run: |
-    #     mkdir -p $HOME/.kube
-    #     echo "${{ secrets.K8S_CA_CERT }}" | base64 -d > $HOME/.kube/ca.crt
-    #     
-    #     kubectl config set-cluster my-cluster \
-    #       --server=${{ secrets.K8S_SERVER }} \
-    #       --certificate-authority=$HOME/.kube/ca.crt \
-    #       --embed-certs=true
-    #     
-    #     kubectl config set-credentials github-actions \
-    #       --token=${{ secrets.K8S_TOKEN }}
-    #     
-    #     kubectl config set-context deploy-context \
-    #       --cluster=my-cluster \
-    #       --user=github-actions \
-    #       --namespace=${{ vars.NAMESPACE }}
-    #     
-    #     kubectl config use-context deploy-context
-        
+        echo "Checking minikube status..."
+        if ! minikube status &>/dev/null; then
+          echo "Minikube is not running. Starting minikube..."
+          minikube start --driver=docker
+          echo "Waiting for minikube to be ready..."
+          sleep 10
+        else
+          echo "Minikube is already running"
+        fi
+        minikube status
+      
     - name: Verify Kubernetes Connection
       run: |
         echo "Testing connection to cluster..."
         kubectl cluster-info
+        kubectl get nodes
         echo "Connection successful!"
+        
+    - name: Ensure Ingress is Enabled
+      run: |
+        echo "Checking ingress addon..."
+        if ! minikube addons list | grep -q "ingress.*enabled"; then
+          echo "Enabling ingress addon..."
+          minikube addons enable ingress
+          echo "Waiting for ingress controller to be ready..."
+          kubectl wait --namespace ingress-nginx \
+            --for=condition=ready pod \
+            --selector=app.kubernetes.io/component=controller \
+            --timeout=120s || true
+        else
+          echo "Ingress addon already enabled"
+        fi
         
     - name: Deploy Application
       run: echo "Deploying to Kubernetes Cluster"
@@ -258,62 +244,31 @@ jobs:
       run: |
         echo "Checking for ingress-nginx controller..."
         
-        # First check which ingress service exists
+        # Check for ingress service
         if kubectl get svc ingress-nginx-controller -n ingress-nginx 2>/dev/null; then
           SERVICE_NAME="ingress-nginx-controller"
-          echo "Found service: ingress-nginx-controller"
         elif kubectl get svc nginx-ingress-controller -n ingress-nginx 2>/dev/null; then
           SERVICE_NAME="nginx-ingress-controller"
-          echo "Found service: nginx-ingress-controller"
         else
-          echo "Warning: No ingress controller service found in ingress-nginx namespace"
-          echo "Available services in ingress-nginx:"
+          echo "Warning: No ingress controller found"
           kubectl get svc -n ingress-nginx || true
           SERVICE_NAME=""
         fi
         
         if [ -n "$SERVICE_NAME" ]; then
-          # Check service type
-          SERVICE_TYPE=$(kubectl get svc $SERVICE_NAME -n ingress-nginx -o jsonpath='{.spec.type}')
-          echo "Service type: $SERVICE_TYPE"
+          # For minikube, use minikube ip command
+          NGINX_IP=$(minikube ip 2>/dev/null || echo "192.168.49.2")
           
-          if [ "$SERVICE_TYPE" = "LoadBalancer" ]; then
-            # Try to get LoadBalancer IP
-            NGINX_IP=$(kubectl get svc $SERVICE_NAME -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-            
-            # Fallback to hostname if IP is not available
-            if [ -z "$NGINX_IP" ]; then
-              NGINX_IP=$(kubectl get svc $SERVICE_NAME -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-            fi
-            
-            # If still empty, LoadBalancer might be pending
-            if [ -z "$NGINX_IP" ]; then
-              echo "LoadBalancer IP/Hostname not yet assigned, checking status..."
-              kubectl get svc $SERVICE_NAME -n ingress-nginx
-              NGINX_IP="pending"
-            fi
-          elif [ "$SERVICE_TYPE" = "NodePort" ]; then
-            # For minikube/NodePort setup, get the node IP
-            # First try to get minikube IP (if running in minikube environment)
-            NGINX_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
-            
-            # Get the NodePort
-            NODE_PORT=$(kubectl get svc $SERVICE_NAME -n ingress-nginx -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}')
-            
-            if [ -n "$NODE_PORT" ]; then
-              echo "NodePort detected: $NODE_PORT"
-              echo "NODE_PORT=$NODE_PORT" >> $GITHUB_ENV
-              # For NodePort, you might want to use IP:PORT format
-              NGINX_ENDPOINT="${NGINX_IP}:${NODE_PORT}"
-              echo "NGINX_ENDPOINT=$NGINX_ENDPOINT" >> $GITHUB_ENV
-            fi
-          fi
+          # Get NodePort for HTTP
+          NODE_PORT=$(kubectl get svc $SERVICE_NAME -n ingress-nginx -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}')
           
           echo "NGINX_IP=$NGINX_IP" >> $GITHUB_ENV
-          echo "Found Nginx Ingress IP/Hostname: $NGINX_IP"
+          echo "NODE_PORT=$NODE_PORT" >> $GITHUB_ENV
+          echo "Minikube IP: $NGINX_IP"
+          echo "Ingress NodePort: $NODE_PORT"
+          echo "Access URL: http://$NGINX_IP:$NODE_PORT"
         else
-          echo "Setting placeholder for NGINX_IP"
-          echo "NGINX_IP=placeholder.example.com" >> $GITHUB_ENV
+          echo "NGINX_IP=192.168.49.2" >> $GITHUB_ENV
         fi
       continue-on-error: true
       
@@ -333,3 +288,14 @@ jobs:
       run: |
         kubectl apply -f kubernetes/development/deployment.yaml
         kubectl rollout status deployment/solar-system -n ${{ vars.NAMESPACE }} --timeout=5m
+    #sdfsdfsdf
+    - name: Verify Deployment
+      run: |
+        echo "=== Pods ==="
+        kubectl get pods -n ${{ vars.NAMESPACE }}
+        echo ""
+        echo "=== Services ==="
+        kubectl get svc -n ${{ vars.NAMESPACE }}
+        echo ""
+        echo "=== Ingress ==="
+        kubectl get ingress -n ${{ vars.NAMESPACE }} || echo "No ingress found"
