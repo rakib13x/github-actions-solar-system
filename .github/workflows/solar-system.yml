@@ -5,7 +5,7 @@ on:
   push:
     branches:
       - main
-      - 'feature/*'
+      - 'feature'
 
 env:
   MONGO_URI: ${{ secrets.MONGO_URI }}
@@ -13,26 +13,323 @@ env:
   MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD }}
     
 jobs:
-    unit-testing:
+  unit-testing:
         name: Unit Testing
-        runs-on: ubuntu-latest
+        services: 
+          mongo-db: 
+            image: siddharth67/mongo-db:non-prod
+            ports:
+              - 27017:27017
+        env:
+          # Using credentials that match the mongo-db:non-prod image
+          MONGO_URI: 'mongodb://non-prod-user:non-prod-password@localhost:27017/superData'
+          MONGO_USERNAME: 'non-prod-user'
+          MONGO_PASSWORD: 'non-prod-password'      
+        strategy:
+          matrix:
+            nodejs_version: [18, 19, 20]
+            operating_system: [ubuntu-latest]
+            exclude:
+              - nodejs_version: 18
+                operating_system: macos-latest
+        runs-on: ${{ matrix.operating_system }}
         steps:
         - name: Checkout Repository
           uses: actions/checkout@v4
 
-        - name: Setup NodeJS Version
+        - name: Setup NodeJS Version - ${{ matrix.nodejs_version }}
           uses: actions/setup-node@v4
           with:
-            node-version: 20
+            node-version: ${{ matrix.nodejs_version }}
+        
+        - name: Cache NPM dependencies
+          uses: actions/cache@v4
+          with:
+            path: node_modules
+            key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
     
         - name: Install Dependencies
           run: npm install
     
+        - name: Seed Test Database
+          run: npm run seed
+    
         - name: Unit Testing
+          id: node-js-unit-testing
           run: npm test
           
         - name: Archive Test Result
+          if: always()
           uses: actions/upload-artifact@v4
           with:
-            name: Mocha-Test-Result
+            name: test-result-${{ matrix.operating_system }}-node${{ matrix.nodejs_version }}
             path: test-results.xml
+  
+  code-coverage:
+    name: Code Coverage
+    container: node:18
+    services: 
+      mongo-db: 
+        image: mongo:6.0
+        env:
+          MONGO_INITDB_ROOT_USERNAME: testuser
+          MONGO_INITDB_ROOT_PASSWORD: testpass
+          MONGO_INITDB_DATABASE: testdb
+        options: 
+          --name mongo-db
+    env:
+      MONGO_URI: 'mongodb://testuser:testpass@mongo-db:27017/testdb?authSource=admin'
+      MONGO_USERNAME: 'testuser'
+      MONGO_PASSWORD: 'testpass'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      
+    # --as i am running code coverage in node 18 docker container, so no need to setup node again
+    # - name: Setup Nodejs Version - 18
+    #   uses: actions/setup-node@v4
+    #   with:
+    #     node-version: 18
+
+    - name: Cache NPM dependencies
+      uses: actions/cache@v4
+      with:
+        path: node_modules
+        key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+
+    - name: Install Dependencies
+      run: npm install
+
+    - name: Seed Test Database
+      run: npm run seed
+
+    - name: Check Code Coverage
+      continue-on-error: true
+      run: npm run coverage
+
+    - name: Archive Test Result
+      uses: actions/upload-artifact@v4
+      with: 
+        name: code-coverage-result
+        path: coverage
+        retention-days: 5
+  
+  docker:
+    name: Containerization with Docker
+    needs: [unit-testing, code-coverage]
+    permissions:
+      packages: write
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repo
+      uses: actions/checkout@v4
+
+    - name: Dockerhub login
+      uses: docker/login-action@v2.2.0
+      with:
+        username: ${{ vars.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+    - name: GHCR login
+      uses: docker/login-action@v2.2.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build and Push Docker Image
+      uses: docker/build-push-action@v6.18.0
+      with:
+        context: .
+        push: false
+        tags: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+
+    - name: Docker Image Testing
+      run: |
+        docker rm -f solar-system-app || true
+        docker images
+        docker run --name solar-system-app -d \
+          -p 3000:3000 \
+          -e MONGO_URI=${{ env.MONGO_URI }} \
+          -e MONGO_USERNAME=${{ env.MONGO_USERNAME }} \
+          -e MONGO_PASSWORD=${{ env.MONGO_PASSWORD }} \
+          ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+
+        export IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' solar-system-app)
+        echo $IP
+
+        echo Testing the Image URL using wget
+        wget -q -O - 127.0.0.1:3000/live | grep live
+
+        # Clean up the test container
+        docker stop solar-system-app
+        docker rm solar-system-app
+
+      
+    - name: Container Registry Push
+      uses: docker/build-push-action@v6.18.0
+      with:
+        context: .
+        push: True
+        tags: |
+          ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+          ghcr.io/${{ github.repository_owner }}/github-actions-solar-system:${{ github.sha }}
+
+    - name: Docker Push
+      run: |
+        docker rm -f solar-system-app-push || true
+        docker images
+        docker run --name solar-system-app-push -d \
+          -p 3000:3000 \
+          -e MONGO_URI=${{ env.MONGO_URI }} \
+          -e MONGO_USERNAME=${{ env.MONGO_USERNAME }} \
+          -e MONGO_PASSWORD=${{ env.MONGO_PASSWORD }} \
+          ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+
+        export IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' solar-system-app-push)
+        echo $IP
+
+        echo Testing the Image URL using wget
+        wget -q -O - 127.0.0.1:3000/live | grep live
+
+  dev-deploy:
+    name: Deploy to Kubernetes
+    needs: docker
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+        
+    # OPTION 1: Using kubeconfig from secrets
+    - name: Set up Kubeconfig
+      run: |
+        mkdir -p $HOME/.kube
+        # Write the secret directly (assuming it's plain text YAML)
+        echo "${{ secrets.KUBECONFIG }}" > $HOME/.kube/config
+        chmod 600 $HOME/.kube/config
+        # Verify the config was created
+        ls -la $HOME/.kube/config
+        # Show the server address (without credentials) for debugging
+        kubectl config view --minify | grep server || echo "Could not parse kubeconfig"
+        
+    # OPTION 2: Using Service Account Token (More Secure for CI/CD)
+    # Create these secrets in GitHub:
+    # - K8S_SERVER: https://your-cluster-ip:6443
+    # - K8S_CA_CERT: Base64 encoded CA certificate
+    # - K8S_TOKEN: Service account token
+    # 
+    # - name: Configure kubectl with Service Account
+    #   run: |
+    #     mkdir -p $HOME/.kube
+    #     echo "${{ secrets.K8S_CA_CERT }}" | base64 -d > $HOME/.kube/ca.crt
+    #     
+    #     kubectl config set-cluster my-cluster \
+    #       --server=${{ secrets.K8S_SERVER }} \
+    #       --certificate-authority=$HOME/.kube/ca.crt \
+    #       --embed-certs=true
+    #     
+    #     kubectl config set-credentials github-actions \
+    #       --token=${{ secrets.K8S_TOKEN }}
+    #     
+    #     kubectl config set-context deploy-context \
+    #       --cluster=my-cluster \
+    #       --user=github-actions \
+    #       --namespace=${{ vars.NAMESPACE }}
+    #     
+    #     kubectl config use-context deploy-context
+        
+    - name: Verify Kubernetes Connection
+      run: |
+        echo "Testing connection to cluster..."
+        kubectl cluster-info
+        echo "Connection successful!"
+        
+    - name: Deploy Application
+      run: echo "Deploying to Kubernetes Cluster"
+      
+    - name: Save nginx Controller IP as a Variable
+      id: save-nginx-ip
+      run: |
+        echo "Checking for ingress-nginx controller..."
+        
+        # First check which ingress service exists
+        if kubectl get svc ingress-nginx-controller -n ingress-nginx 2>/dev/null; then
+          SERVICE_NAME="ingress-nginx-controller"
+          echo "Found service: ingress-nginx-controller"
+        elif kubectl get svc nginx-ingress-controller -n ingress-nginx 2>/dev/null; then
+          SERVICE_NAME="nginx-ingress-controller"
+          echo "Found service: nginx-ingress-controller"
+        else
+          echo "Warning: No ingress controller service found in ingress-nginx namespace"
+          echo "Available services in ingress-nginx:"
+          kubectl get svc -n ingress-nginx || true
+          SERVICE_NAME=""
+        fi
+        
+        if [ -n "$SERVICE_NAME" ]; then
+          # Check service type
+          SERVICE_TYPE=$(kubectl get svc $SERVICE_NAME -n ingress-nginx -o jsonpath='{.spec.type}')
+          echo "Service type: $SERVICE_TYPE"
+          
+          if [ "$SERVICE_TYPE" = "LoadBalancer" ]; then
+            # Try to get LoadBalancer IP
+            NGINX_IP=$(kubectl get svc $SERVICE_NAME -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            
+            # Fallback to hostname if IP is not available
+            if [ -z "$NGINX_IP" ]; then
+              NGINX_IP=$(kubectl get svc $SERVICE_NAME -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+            fi
+            
+            # If still empty, LoadBalancer might be pending
+            if [ -z "$NGINX_IP" ]; then
+              echo "LoadBalancer IP/Hostname not yet assigned, checking status..."
+              kubectl get svc $SERVICE_NAME -n ingress-nginx
+              NGINX_IP="pending"
+            fi
+          elif [ "$SERVICE_TYPE" = "NodePort" ]; then
+            # For minikube/NodePort setup, get the node IP
+            # First try to get minikube IP (if running in minikube environment)
+            NGINX_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+            
+            # Get the NodePort
+            NODE_PORT=$(kubectl get svc $SERVICE_NAME -n ingress-nginx -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}')
+            
+            if [ -n "$NODE_PORT" ]; then
+              echo "NodePort detected: $NODE_PORT"
+              echo "NODE_PORT=$NODE_PORT" >> $GITHUB_ENV
+              # For NodePort, you might want to use IP:PORT format
+              NGINX_ENDPOINT="${NGINX_IP}:${NODE_PORT}"
+              echo "NGINX_ENDPOINT=$NGINX_ENDPOINT" >> $GITHUB_ENV
+            fi
+          fi
+          
+          echo "NGINX_IP=$NGINX_IP" >> $GITHUB_ENV
+          echo "Found Nginx Ingress IP/Hostname: $NGINX_IP"
+        else
+          echo "Setting placeholder for NGINX_IP"
+          echo "NGINX_IP=placeholder.example.com" >> $GITHUB_ENV
+        fi
+      continue-on-error: true
+      
+    - name: Replace Tokens in Manifest files
+      run: |
+        sed -i "s|_{_NAMESPACE_}_|${{ vars.NAMESPACE }}|g" kubernetes/development/deployment.yaml
+        sed -i "s|_{_REPLICAS_}_|${{ vars.REPLICAS }}|g" kubernetes/development/deployment.yaml
+        sed -i "s|_{_IMAGE_}_|${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}|g" kubernetes/development/deployment.yaml
+        sed -i "s|_{_INGRESS_IP_}_|${{ env.NGINX_IP }}|g" kubernetes/development/deployment.yaml
+        
+    - name: Check files
+      run: |
+        echo "=== Deployment manifest after token replacement ==="
+        cat kubernetes/development/deployment.yaml
+        
+    - name: Apply Kubernetes Manifests
+      run: |
+        kubectl apply -f kubernetes/development/deployment.yaml
+        kubectl rollout status deployment/solar-system -n ${{ vars.NAMESPACE }} --timeout=5m
