@@ -196,6 +196,8 @@ jobs:
   dev-deploy:
     name: Deploy to Kubernetes
     needs: docker
+    outputs:
+      app_url: ${{ steps.set-app-url.outputs.app_url }}
     runs-on: self-hosted
     steps:
     - name: Checkout Repository
@@ -322,3 +324,22 @@ jobs:
         echo ""
         echo "=== Ingress ==="
         kubectl get ingress -n ${{ vars.NAMESPACE }} || echo "No ingress found"
+    - name: Set App URL Output
+      id: set-app-url
+      run: |
+        APP_URL="http://${{ env.NGINX_IP }}:${{ env.NODE_PORT }}"
+        echo "APP_URL=$APP_URL"
+        echo "::set-output name=app_url::$APP_URL"
+    
+  integration-testing:
+    name: Integration Testing
+    needs: dev-deploy
+    runs-on: self-hosted
+    steps:
+      - name: Test url Output using curl
+        run: |
+          APP_URL="${{ needs.dev-deploy.outputs.app_url }}"
+          echo "Application URL: $APP_URL"
+          echo "Testing the Application URL using curl"
+          curl -f $APP_URL/live || (echo "Application is not reachable" && exit 1)
+    
