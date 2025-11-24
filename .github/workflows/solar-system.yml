@@ -324,12 +324,27 @@ jobs:
         echo ""
         echo "=== Ingress ==="
         kubectl get ingress -n ${{ vars.NAMESPACE }} || echo "No ingress found"
-    - name: Set App URL Output
+    - name: Get Application URL
       id: set-app-url
       run: |
-        APP_URL="http://${{ env.NGINX_IP }}:${{ env.NODE_PORT }}"
-        echo "APP_URL=$APP_URL"
-        echo "::set-output name=app_url::$APP_URL"
+        # Check if service exists, if not create it
+        if ! kubectl get svc solar-system -n ${{ vars.NAMESPACE }} 2>/dev/null; then
+          echo "Service not found, creating it..."
+          kubectl expose deployment solar-system \
+            --type=NodePort \
+            --port=3000 \
+            --target-port=3000 \
+            -n ${{ vars.NAMESPACE }}
+          sleep 5
+        fi
+        
+        # Get the NodePort for the application service
+        APP_PORT=$(kubectl get svc solar-system -n ${{ vars.NAMESPACE }} -o jsonpath='{.spec.ports[0].nodePort}')
+        MINIKUBE_IP=$(minikube ip)
+        APP_URL="http://${MINIKUBE_IP}:${APP_PORT}"
+        
+        echo "APP_URL=$APP_URL" >> $GITHUB_OUTPUT
+        echo "Application URL: $APP_URL"
     
   integration-testing:
     name: Integration Testing
