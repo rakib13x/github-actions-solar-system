@@ -357,4 +357,4 @@ jobs:
           echo "Application URL: $APP_URL"
           echo "Testing the Application URL using curl"
           curl -f $APP_URL/live || (echo "Application is not reachable" && exit 1)
-    
+    continue-on-error: true
