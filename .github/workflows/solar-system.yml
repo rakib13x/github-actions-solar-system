@@ -288,7 +288,7 @@ jobs:
       run: |
         kubectl apply -f kubernetes/development/deployment.yaml
         kubectl rollout status deployment/solar-system -n ${{ vars.NAMESPACE }} --timeout=5m
-    #sdfsdfsdf
+    #sdfsdfsdfdsdsd
     - name: Verify Deployment
       run: |
         echo "=== Pods ==="
