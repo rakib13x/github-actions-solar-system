@@ -196,7 +196,7 @@ jobs:
   dev-deploy:
     name: Deploy to Kubernetes
     needs: docker
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
