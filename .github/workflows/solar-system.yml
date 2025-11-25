@@ -196,6 +196,9 @@ jobs:
   dev-deploy:
     name: Deploy to Kubernetes
     needs: docker
+    environment: 
+      name: development
+      url: http://${{ steps.set-app-url.outputs.app_url }}
     outputs:
       app_url: ${{ steps.set-app-url.outputs.app_url }}
     runs-on: self-hosted
